@@ -182,5 +182,3 @@ This project is provided for educational purposes only. Students should:
 - Follow academic honesty policies
 
 **Remember**: The goal is learning! Focus on understanding testing principles, creating thorough test cases, and documenting your testing process. Good luck with your software testing journey! 🎓
-
-TESTING!!!!
