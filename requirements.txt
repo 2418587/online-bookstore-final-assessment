@@ -1,4 +1,4 @@
-bandit==1.8.7.dev11
+bandit==1.8.6
 bcrypt==5.0.0
 bidict==0.23.1
 blinker==1.9.0
