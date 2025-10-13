@@ -81,7 +81,7 @@ def remove_from_cart():
     flash(f'Removed "{book_title}" from cart!', 'success')
     return redirect(url_for('view_cart'))
 
-
+#Fix for update quantity issues
 @app.route('/update-cart', methods=['POST'])
 def update_cart():
     """
@@ -100,15 +100,21 @@ def update_cart():
         - Confirmation of update otherwise
     """
     book_title = request.form.get('title')
-    quantity = int(request.form.get('quantity', 1))
-    
+    quantity_raw = request.form.get('quantity')
+
+    try:
+        quantity = int(quantity_raw)
+    except (ValueError, TypeError):
+        flash ("Please enter a valid quantity", "Error")
+        return redirect(url_for('view_cart'))
+
     cart.update_quantity(book_title, quantity)
-    
+
     if quantity <= 0:
         flash(f'Removed "{book_title}" from cart!', 'success')
     else:
         flash(f'Updated "{book_title}" quantity to {quantity}!', 'success')
-    
+
     return redirect(url_for('view_cart'))
 
 
@@ -135,36 +141,63 @@ def checkout():
     total_price = cart.get_total_price()
     return render_template('checkout.html', cart=cart, total_price=total_price, current_user=current_user)
 
-
 @app.route('/process-checkout', methods=['POST'])
 def process_checkout():
     """Process the checkout form with shipping and payment information"""
     if cart.is_empty():
         flash('Your cart is empty!', 'error')
         return redirect(url_for('index'))
-    
-    # Get form data
+
+    form = request.form or {}
+
+    payment_method = form.get('payment_method', '').lower()
+
+    # Redirect PayPal payments to the dedicated route
+    if payment_method == 'paypal':
+        return redirect(url_for('paypal_checkout'))
+
+    # Safe shipping info
     shipping_info = {
-        'name': request.form.get('name'),
-        'email': request.form.get('email'),
-        'address': request.form.get('address'),
-        'city': request.form.get('city'),
-        'zip_code': request.form.get('zip_code')
+        'name': (form.get('name') or '').strip(),
+        'email': (form.get('email') or '').strip(),
+        'address': (form.get('address') or '').strip(),
+        'city': (form.get('city') or '').strip(),
+        'zip_code': (form.get('zip_code') or '').strip()
     }
-    
+
+    # Validate required shipping fields
+    required_fields = ['name', 'email', 'address', 'city', 'zip_code']
+    missing_fields = [f for f in required_fields if not shipping_info.get(f, '').strip()]
+
+    if missing_fields:
+     flash('Please fill in all required fields', 'error')
+    return redirect(url_for('checkout'))
+
+    # Email format validation
+    import re
+    email_pattern = r'^[^@]+@[^@]+\.[^@]+$'
+    if not re.match(email_pattern, shipping_info['email']):
+        flash('Invalid email address', 'error')
+        return redirect(url_for('checkout'))
+
+    # Safe payment info
     payment_info = {
-        'payment_method': request.form.get('payment_method'),
-        'card_number': request.form.get('card_number'),
-        'expiry_date': request.form.get('expiry_date'),
-        'cvv': request.form.get('cvv')
+        'payment_method': 'credit_card',
+        'card_number': (form.get('card_number') or '').strip(),
+        'expiry_date': (form.get('expiry_date') or '').strip(),
+        'cvv': (form.get('cvv') or '').strip()
     }
-    
-    discount_code = request.form.get('discount_code', '')
-    
-    # Calculate total with discount
+
+    # Validate credit card fields
+    if not payment_info['card_number'] or not payment_info['expiry_date'] or not payment_info['cvv']:
+        flash('Please fill in all credit card details', 'error')
+        return redirect(url_for('checkout'))
+
+    # Handle discount code safely
+    discount_code = (form.get('discount_code') or '').strip().upper()
     total_amount = cart.get_total_price()
     discount_applied = 0
-    
+
     if discount_code == 'SAVE10':
         discount_applied = total_amount * 0.10
         total_amount -= discount_applied
@@ -175,26 +208,15 @@ def process_checkout():
         flash(f'Welcome discount applied! You saved ${discount_applied:.2f}', 'success')
     elif discount_code:
         flash('Invalid discount code', 'error')
-    
-    required_fields = ['name', 'email', 'address', 'city', 'zip_code']
-    for field in required_fields:
-        if not shipping_info.get(field):
-            flash(f'Please fill in the {field.replace("_", " ")} field', 'error')
-            return redirect(url_for('checkout'))
-    
-    if payment_info['payment_method'] == 'credit_card':
-        if not payment_info.get('card_number') or not payment_info.get('expiry_date') or not payment_info.get('cvv'):
-            flash('Please fill in all credit card details', 'error')
-            return redirect(url_for('checkout'))
-    
-    # Process payment through mock gateway
+
+    # Process payment
     payment_result = PaymentGateway.process_payment(payment_info)
-    
     if not payment_result['success']:
         flash(payment_result['message'], 'error')
         return redirect(url_for('checkout'))
-    
+
     # Create order
+    import uuid
     order_id = str(uuid.uuid4())[:8].upper()
     order = Order(
         order_id=order_id,
@@ -207,27 +229,76 @@ def process_checkout():
         },
         total_amount=total_amount
     )
-    
+
     # Store order
     orders[order_id] = order
-    
+
     # Add order to user if logged in
     current_user = get_current_user()
     if current_user:
         current_user.add_order(order)
-    
+
     # Send confirmation email (mock)
     EmailService.send_order_confirmation(shipping_info['email'], order)
-    
+
     # Clear cart
     cart.clear()
-    
-    # Store order in session for confirmation page
+
     session['last_order_id'] = order_id
-    
     flash('Payment successful! Your order has been confirmed.', 'success')
     return redirect(url_for('order_confirmation', order_id=order_id))
 
+
+
+
+# New Paypal route
+@app.route('/paypal', methods=['GET', 'POST'])
+def paypal_checkout():
+    """Handle PayPal payments"""
+    if request.method == 'POST':
+        paypal_email = request.form.get('paypal_email', '')
+
+        payment_info = {
+            'payment_method': 'paypal',
+            'paypal_email': paypal_email
+        }
+
+        # Validate PayPal email via PaymentGateway
+        payment_result = PaymentGateway.process_payment(payment_info)
+        if not payment_result['success']:
+            flash(payment_result['message'], 'error')
+            return redirect(url_for('checkout'))
+
+        # Create order
+        order_id = str(uuid.uuid4())[:8].upper()
+        order = Order(
+            order_id=order_id,
+            user_email=paypal_email,
+            items=cart.get_items(),
+            shipping_info={'name': '', 'email': paypal_email, 'address': '', 'city': '', 'zip_code': ''},
+            payment_info={'method': 'paypal', 'transaction_id': payment_result['transaction_id']},
+            total_amount=cart.get_total_price()
+        )
+
+        # Store order
+        orders[order_id] = order
+
+        # Add order to user if logged in
+        current_user = get_current_user()
+        if current_user:
+            current_user.add_order(order)
+
+        # Send confirmation email (mock)
+        EmailService.send_order_confirmation(paypal_email, order)
+
+        # Clear cart
+        cart.clear()
+        session['last_order_id'] = order_id
+
+        flash('PayPal payment successful! Your order has been confirmed.', 'success')
+        return redirect(url_for('order_confirmation', order_id=order_id))
+
+    return render_template('paypal_checkout.html')
 
 @app.route('/order-confirmation/<order_id>')
 def order_confirmation(order_id):
@@ -242,7 +313,6 @@ def order_confirmation(order_id):
 
 
 # User Account Management Routes
-
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     """User registration"""
@@ -251,26 +321,35 @@ def register():
         password = request.form.get('password')
         name = request.form.get('name')
         address = request.form.get('address', '')
-        
+
         # Validate required fields
         if not email or not password or not name:
             flash('Please fill in all required fields', 'error')
             return render_template('register.html')
-        
+
+        # New email format validation
+        import re
+        email_pattern = r'^[\w\.-]+@[\w\.-]+\.\w+$'
+        if not re.match(email_pattern, email):
+            flash('Invalid email format', 'error')
+            return render_template('register.html')
+
         if email in users:
             flash('An account with this email already exists', 'error')
             return render_template('register.html')
-        
+
         # Create new user
         user = User(email, password, name, address)
         users[email] = user
-        
+
         # Log in the user
         session['user_email'] = email
         flash('Account created successfully! You are now logged in.', 'success')
         return redirect(url_for('index'))
-    
+
     return render_template('register.html')
+
+
 
 
 @app.route('/login', methods=['GET', 'POST'])

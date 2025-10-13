@@ -1,3 +1,5 @@
+import bisect
+
 class Book:
     def __init__(self, title, category, price, image):
         self.title = title
@@ -48,15 +50,26 @@ class Cart:
         if book_title in self.items:
             del self.items[book_title]
 
+    #Fix for update quantity issues
     def update_quantity(self, book_title, quantity):
-        if book_title in self.items:
-            self.items[book_title].quantity = quantity
+     if book_title not in self.items:
+        return
+
+    # Handle empty or invalid quantity
+     try:
+        quantity = int(quantity)
+     except (ValueError, TypeError):
+        return
+
+     if quantity <= 0:
+        del self.items[book_title]
+     else:
+        self.items[book_title].quantity = quantity
 
     def get_total_price(self):
         total = 0
         for item in self.items.values():
-            for i in range(item.quantity):
-                total += item.book.price
+            total += item.book.price * item.quantity
         return total
 
     def get_total_items(self):
@@ -72,24 +85,38 @@ class Cart:
         return len(self.items) == 0
 
 
+import bcrypt
+from datetime import datetime
+
 class User:
-    """User account management class"""
+    """User account management class with secure password storage"""
     def __init__(self, email, password, name="", address=""):
         self.email = email
-        self.password = password
+        self.password = self._hash_password(password)
         self.name = name
         self.address = address
         self.orders = []
         self.temp_data = []
         self.cache = {}
-    
-    def add_order(self, order):
-        self.orders.append(order)
-        self.orders.sort(key=lambda x: x.order_date)
-    
-    def get_order_history(self):
-        return [order for order in self.orders]
 
+    def _hash_password(self, plain_password):
+        """Hash a password using bcrypt"""
+        salt = bcrypt.gensalt()
+        hashed = bcrypt.hashpw(plain_password.encode('utf-8'), salt)
+        return hashed
+
+    def check_password(self, plain_password):
+        """Verify a password against the stored hash"""
+        return bcrypt.checkpw(plain_password.encode('utf-8'), self.password)
+
+    def add_order(self, order):
+    # Insert order into the sorted position based on order_date
+        index = bisect.bisect_left([o.order_date for o in self.orders], order.order_date)
+        self.orders.insert(index, order)
+
+    def get_order_history(self):
+    # Now the list is already sorted, so just return it
+     return self.orders
 
 class Order:
     """Order management class"""
@@ -116,39 +143,56 @@ class Order:
         }
 
 
+import random
+import re
+
 class PaymentGateway:
-    """Mock payment gateway for processing payments"""
-    
     @staticmethod
     def process_payment(payment_info):
-        """Mock payment processing - returns success/failure with mock logic"""
-        card_number = payment_info.get('card_number', '')
-        
-        # Mock logic: cards ending in '1111' fail, others succeed
-        if card_number.endswith('1111'):
-            return {
-                'success': False,
-                'message': 'Payment failed: Invalid card number',
-                'transaction_id': None
-            }
-        
-        import random
-        import time
-        import datetime
-        
-        time.sleep(0.1)
-        
-        transaction_id = f"TXN{random.randint(100000, 999999)}"
-        
-        if payment_info.get('payment_method') == 'paypal':
-            pass
-        
+        """
+        Simulates processing of a payment.
+        Returns a dictionary with:
+        - success: True/False
+        - transaction_id: TXN number if successful, None otherwise
+        - message: success/failure message
+        """
+        card_number = payment_info.get('card_number', '').replace(' ', '')
+        expiry_date = payment_info.get('expiry_date', '').strip()
+        cvv = payment_info.get('cvv', '').strip()
+        payment_method = payment_info.get('payment_method', '').lower()
+
+        # Basic validation
+        if payment_method != 'credit_card':
+            return {'success': False, 'transaction_id': None, 'message': 'Unsupported payment method'}
+
+        if not card_number.isdigit():
+            return {'success': False, 'transaction_id': None, 'message': 'Invalid card number'}
+
+        # Card number length validation
+        if len(card_number) < 13:
+            return {'success': False, 'transaction_id': None, 'message': 'Card number too short'}
+        if len(card_number) > 16:
+            return {'success': False, 'transaction_id': None, 'message': 'Card number too long'}
+
+        # Expiry date check
+        if not expiry_date:
+            return {'success': False, 'transaction_id': None, 'message': 'Expiry date missing'}
+
+        # CVV check
+        if not cvv or not cvv.isdigit() or len(cvv) not in [3, 4]:
+            return {'success': False, 'transaction_id': None, 'message': 'Invalid CVV'}
+
+        # Example invalid card number rule: ends with 1111
+        if card_number.endswith("1111"):
+            return {'success': False, 'transaction_id': None, 'message': 'Payment failed: Invalid card number'}
+
+        # Simulate successful payment
+        transaction_id = 'TXN' + str(random.randint(100000, 999999))
         return {
             'success': True,
-            'message': 'Payment processed successfully',
-            'transaction_id': transaction_id
+            'transaction_id': transaction_id,
+            'message': 'Payment processed successfully'
         }
-
 
 class EmailService:
     """Mock email service for sending order confirmations"""
