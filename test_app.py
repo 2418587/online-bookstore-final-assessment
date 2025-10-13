@@ -420,7 +420,7 @@ class CheckoutFormValidationTest(unittest.TestCase):
         html = response.get_data(as_text=True)
         
         # Check that the page shows an error message about missing required fields
-        self.assertIn("Please fill in the name field", html)  
+        self.assertIn("Please fill in all required fields", html) 
 
 # Payment page Email Address correct format (TC003-08)  
 class CheckoutEmailFormatTest(unittest.TestCase):

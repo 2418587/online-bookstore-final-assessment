@@ -145,8 +145,8 @@ def checkout():
 def process_checkout():
     """Process the checkout form with shipping and payment information"""
     if cart.is_empty():
-        flash('Your cart is empty!', 'error')
-        return redirect(url_for('index'))
+     flash('Your cart is empty!', 'error')
+     return redirect(url_for('index'))
 
     form = request.form or {}
 
@@ -171,7 +171,7 @@ def process_checkout():
 
     if missing_fields:
      flash('Please fill in all required fields', 'error')
-    return redirect(url_for('checkout'))
+     return redirect(url_for('checkout'))
 
     # Email format validation
     import re
@@ -245,7 +245,7 @@ def process_checkout():
     cart.clear()
 
     session['last_order_id'] = order_id
-    flash('Payment successful! Your order has been confirmed.', 'success')
+    flash('Order Confirmed!', 'success')
     return redirect(url_for('order_confirmation', order_id=order_id))
 
 
@@ -295,7 +295,7 @@ def paypal_checkout():
         cart.clear()
         session['last_order_id'] = order_id
 
-        flash('PayPal payment successful! Your order has been confirmed.', 'success')
+        flash('Order Confirmed!', 'success')
         return redirect(url_for('order_confirmation', order_id=order_id))
 
     return render_template('paypal_checkout.html')
