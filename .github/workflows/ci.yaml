@@ -28,3 +28,7 @@ jobs:
       - name: Run unittests
         run: |
           python -m unittest discover -s . -p "test_*.py"
+
+      - name: Run load tests with Locust
+        run: |
+         locust -f tests/test_locust.py --headless -u 10 -r 2 --run-time 1m --host http://127.0.0.1:5000 --csv locust_results
