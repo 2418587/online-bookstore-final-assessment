@@ -249,8 +249,6 @@ def process_checkout():
     return redirect(url_for('order_confirmation', order_id=order_id))
 
 
-
-
 # New Paypal route
 @app.route('/paypal', methods=['GET', 'POST'])
 def paypal_checkout():
