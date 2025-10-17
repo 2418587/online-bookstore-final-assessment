@@ -31,4 +31,4 @@ jobs:
 
       - name: Run load tests with Locust
         run: |
-         locust -f tests/test_locust.py --headless -u 10 -r 2 --run-time 1m --host http://127.0.0.1:5000 --csv locust_results
+         locust -f test_locust.py --headless -u 10 -r 2 --run-time 1m --host http://127.0.0.1:5000 --csv locust_results
